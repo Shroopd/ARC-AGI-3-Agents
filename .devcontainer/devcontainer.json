@@ -35,5 +35,5 @@
     "mounts": [
         "source=${env:HOME}${env:USERPROFILE}/.config,target=/home/vscode/.config,type=bind,consistency=cached"
     ],
-    "postCreateCommand": "cd /workspaces/ARC-AGI-3-Agents && uv sync --python 3.14 --dev && uv run pre-commit install"
+    "postCreateCommand": "cd /workspaces/ARC-AGI-3-Agents && uv sync --python 3.13 --dev && uv run pre-commit install"
 }

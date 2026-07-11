@@ -16,7 +16,7 @@ RUN dnf -y install --allowerasing \
     which \
     procps-ng \
     sudo \
-    python3.14 \
+    python3.13 \
     findutils \
     unzip \
     wget \
@@ -24,8 +24,8 @@ RUN dnf -y install --allowerasing \
     && dnf clean all
 
 # Python venv support
-RUN python3.14 -m ensurepip --upgrade && \
-    python3.14 -m pip install --upgrade pip setuptools wheel
+RUN python3.13 -m ensurepip --upgrade && \
+    python3.13 -m pip install --upgrade pip setuptools wheel
 
 # Install uv (Rust-based Python package manager)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
