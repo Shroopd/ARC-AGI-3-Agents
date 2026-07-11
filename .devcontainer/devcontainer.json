@@ -1,0 +1,39 @@
+{
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "."
+    },
+    "runArgs": [
+        // Household LLM server cluster host
+        "--add-host",
+        "spark1:10.13.54.178",
+        "--cap-add=SYS_PTRACE",
+        "--security-opt",
+        "seccomp=unconfined"
+    ],
+    "remoteUser": "vscode",
+    "containerUser": "vscode",
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+                "python.terminal.activateEnvironment": true,
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "files.associations": {
+                    "*.md": "markdown"
+                }
+            },
+            "extensions": [
+                "ms-python.python",
+                "ms-python.pylint",
+                "ms-python.vscode-pylance",
+                "charliermarsh.ruff",
+                "kilocode.kilo-code"
+            ]
+        }
+    },
+    "mounts": [
+        "source={localEnv:HOME}{localEnv:USERPROFILE}/.config,target=/home/vscode/.config,type=bind,consistency=cached"
+    ],
+    "postCreateCommand": "cd /workspaces/ARC-AGI-3-Agents && uv sync --python 3.14 --dev && uv run pre-commit install"
+}

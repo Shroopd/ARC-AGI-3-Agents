@@ -1,0 +1,25 @@
+# OS and environment
+.DS_Store
+*.log
+.env
+
+# Version control
+.git
+.gitignore
+
+# Python cache
+__pycache__
+*.pyc
+.ruff_cache/
+.mypy_cache/
+
+# IDE
+.vscode/
+
+# Project data
+environment_files/
+recordings/
+tests/recordings/
+
+# Long-term memory
+memory.db
