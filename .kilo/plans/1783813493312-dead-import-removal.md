@@ -1,215 +1,156 @@
-# Dead Import Removal Plan — Dead Import Chase Results
+# Remove All LLM-Based Agents
 
-## Removed Packages
-- `langchain[openai]` → imports: `langchain_core.*`, `langchain_openai.*`
-- `langgraph>=0.6.3` + `langgraph-checkpoint-sqlite` → imports: `langgraph.*` (submodules: graph, pregel, store.sqlite, config, checkpoint.memory, func)
-- `langsmith` → imports: `langsmith`, `langsmith.schemas.Attachment` (removed before last commit, but dead imports remain)
+## Goal
+Remove every agent class that depends on an LLM. Keep only `Random` and `Playback` as available agents. Preserve independent utility functions into `_game_utils/vision.py`.
 
 ---
 
-## Depth 1 — Direct Dead Imports
+## Files to Remove Entirely (5 files, 1 directory)
 
-### Affected Files and Dead Imports
+| # | Path | Reason |
+|---|------|--------|
+| 1 | `agents/templates/llm_agents.py` | `LLM`, `FastLLM`, `GuidedLLM`, `ReasoningLLM`. All use OpenAI. |
+| 2 | `agents/templates/multimodal.py` | `MultiModalLLM`. Uses OpenAI. Contains independent utilities (extracted first — see below). |
+| 3 | `agents/templates/reasoning_agent.py` | `ReasoningAgent` extends `ReasoningLLM`. Uses OpenAI. `generate_grid_image_with_zone()` extracted first. |
+| 4 | `agents/templates/smolagents.py` | `SmolCodingAgent`, `SmolVisionAgent`. Uses smolagents + OpenAI via `LLM`. `SmolVisionAgent.grid_to_image()` extracted first. |
+| 5 | `agents/templates/openclaw_agent/` (directory) | `OpenClaw`. Uses OpenAI gateway. No independent content worth extracting — all helpers (`_parse_blob`, `_action_from_blob`, `_extract_reasoning`, `_enforce_size`) are tied to the OpenClaw JSON-in-text protocol. |
 
-| # | File | Dead Imports |
-|---|------|-------------|
-| 1 | `agents/__init__.py` | L8: `from .templates.langgraph_functional_agent import LangGraphFunc, LangGraphTextOnly`; L9: `from .templates.langgraph_random_agent import LangGraphRandom`; L10: `from .templates.langgraph_thinking import LangGraphThinking`; L36-39: `__all__` entries for these 4 classes |
-| 2 | `agents/templates/langgraph_thinking/__init__.py` | L1: `from .agent import LangGraphThinking` (re-export) |
-| 3 | `agents/templates/langgraph_thinking/agent.py` | L5: `from langgraph.graph import END, START, StateGraph`; L6: `from langgraph.pregel import Pregel`; L7: `from langgraph.store.sqlite import SqliteStore` |
-| 4 | `agents/templates/langgraph_thinking/llm.py` | L1: `from langchain_core.language_models import BaseChatModel`; L2: `from langchain_openai import ChatOpenAI` |
-| 5 | `agents/templates/langgraph_thinking/nodes.py` | L8: `from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage`; L9: `from langgraph.config import get_store` |
-| 6 | `agents/templates/langgraph_thinking/schema.py` | L5: `from langchain_core.messages import BaseMessage` |
-| 7 | `agents/templates/langgraph_thinking/tools.py` | L6: `from langchain_core.tools import tool`; L7: `from langgraph.config import get_store` |
-| 8 | `agents/templates/langgraph_random_agent.py` | L6: `from langgraph.graph import END, START, StateGraph`; L7: `from langgraph.pregel import Pregel` |
-| 9 | `agents/templates/langgraph_functional_agent.py` | L10: `import langsmith as ls`; L13: `from langgraph.checkpoint.memory import InMemorySaver`; L14: `from langgraph.func import entrypoint`; L15: `from langgraph.pregel import Pregel`; L16: `from langsmith.schemas import Attachment` |
-| 10 | `tests/unit/test_core.py` | L11: `from agents.templates.langgraph_random_agent import LangGraphRandom`; L249: `assert "langgraphrandom" in name.lower()` within `TestLangGraphRandomAgent` class |
+## Test Files to Remove Entirely (2 files)
 
-### Categorization (Depth 1)
-
-#### A. Fully Dependent — Mark for Removal (no salvageable code)
-1. **`agents/templates/langgraph_thinking/__init__.py`** — Re-export shim. Remove entirely.
-2. **`agents/templates/langgraph_thinking/llm.py`** — Factory returning langchain types. Remove entirely.
-3. **`agents/templates/langgraph_thinking/tools.py`** — All 4 tools use `@tool` + `get_store()`. Remove entirely.
-4. **`agents/templates/langgraph_thinking/agent.py`** — Entire `LangGraphThinking` class uses `StateGraph`, `Pregel`, `SqliteStore`. Remove entirely.
-5. **`agents/templates/langgraph_thinking/nodes.py`** — All 5 node functions use `langchain_core.messages` and `get_store()`. Remove entirely.
-6. **`agents/templates/langgraph_random_agent.py`** — Entire `LangGraphRandom` class uses `StateGraph`, `Pregel`. Remove entirely.
-
-#### B. Fully Independent — Mark for Preservation (no changes needed)
-7. **`agents/templates/langgraph_thinking/prompts.py`** — Pure string-building functions. Imports `Observation` from `.schema` (preserved). No dead imports.
-8. **`agents/templates/langgraph_thinking/vision.py`** — Frame rendering utilities (PIL + numpy). No dead imports.
-
-#### C. Partially Dependent — Mark for Investigation
-9. **`agents/templates/langgraph_thinking/schema.py`** — Dead import `BaseMessage` (L5) used only in `AgentState.context` type annotation (L17). The `LLM` enum, `KeyCheck`, and `Observation` TypedDicts are independent. **Action**: Remove `BaseMessage` import, change `context: list[BaseMessage]` to `context: list[Any]` (add `Any` to typing imports).
-
-10. **`agents/templates/langgraph_functional_agent.py`** — Mixed content:
-    - **Dead/remove**: `build_agent()` (L47-120), `LangGraphFunc` class (L126-173), `LangGraphTextOnly` class (L176-177), imports L10+L13-16, docstring L1
-    - **Independent/preserve**: `g2im()` (L225-261)
-    - **Needs stripping**: `format_frame()` (L180-222) — else branch (L190-195) uses `ls.get_current_run_tree()` and `Attachment`. Strip those lines.
-    - **Action**: Strip dead imports and code. Keep `format_frame()` and `g2im()`. Remove the `from agents.templates.llm_agents import LLM` line since only `LangGraphFunc` used it. The remaining imports (`base64`, `io`, `json`, `Any` from typing, `FrameData` from arcengine, `ChatCompletionMessage` from openai) are all alive.
-
-11. **`agents/__init__.py`** — Lines 8-10 import from removed modules. Lines 36-39 are dead `__all__` entries. **Action**: Remove L8-10 and the 4 `__all__` strings. `AVAILABLE_AGENTS` dict uses `Agent.__subclasses__()` which auto-discovers — no change needed.
-
-12. **`tests/unit/test_core.py`** — Line 11 imports `LangGraphRandom`. `TestLangGraphRandomAgent` class (L229-281). **Action**: Remove L11 and the entire test class (L229-281).
+| # | Path | Reason |
+|---|------|--------|
+| 6 | `tests/unit/test_openclaw_parser.py` | Tests `OpenClaw._parse_blob` / `_extract_reasoning`. |
+| 7 | `tests/unit/test_openclaw_model_override.py` | Tests OpenClaw model override header. |
 
 ---
 
-## Depth 2 — Knock-on Effects from Depth 1 Removals
+## Files to Edit (2 files)
 
-After removing files marked A and applying changes to C files in Depth 1:
-
-### New Dead Imports (from now-removed modules)
-
-| # | File | Dead Import | Reason |
-|---|------|-------------|--------|
-| 1 | `agents/__init__.py` | L8-10: imports from `.templates.langgraph_*` | Those modules removed in Depth 1 |
-| 2 | `tests/unit/test_core.py` | L11: `from agents.templates.langgraph_random_agent import LangGraphRandom` | Module removed in Depth 1 |
-
-**Status**: Already handled in Depth 1 Category C actions. No new files surface.
-
-### Categorization (Depth 2)
-
-#### A. Fully Dependent — Mark for Removal
-*(none new)*
-
-#### B. Fully Independent — Mark for Preservation
-*(none new)*
-
-#### C. Partially Dependent — Mark for Investigation
-*(none new)*
+| # | File | Changes |
+|---|------|---------|
+| 8 | `agents/__init__.py` | Remove imports of all removed agents. Rebuild `__all__` to: `Swarm`, `Random`, `Agent`, `Recorder`, `Playback`, `AVAILABLE_AGENTS`. Remove the `AVAILABLE_AGENTS["reasoningagent"] = ReasoningAgent` manual override line. |
+| 9 | `pyproject.toml` | Remove `openai`, `smolagents`, `agentops` from `[project]` dependencies. |
 
 ---
 
-## Depth 3 — Knock-on Effects from Depth 2 Removals
+## Files to Edit — Preserve Independent Utilities (1 file)
 
-No knock-on effects remain. All cascading dead imports are contained.
+### `agents/templates/_game_utils/vision.py`
 
----
+Append the following extracted functions. The file already has: `base64`, `json`, `BytesIO`, `numpy`, `FrameData` from arcengine, `PIL.Image/ImageDraw/ImageFont`, `COLOR_PALETTE`, `SCALE_FACTOR`, `extract_rect_from_render`, `render_frame`, `add_highlight`, `g2im`, `format_frame`.
 
-## Resolved Design Decisions
+#### Import change
+Add `GameAction` to the arcengine import:
+```diff
+-from arcengine import FrameData
++from arcengine import FrameData, GameAction
+```
 
-1. **Preserved functions location**: `format_frame()` and `g2im()` → merge into `agents/templates/_game_utils/vision.py`. After merge, delete `agents/templates/langgraph_functional_agent.py` entirely (no remaining content).
-2. **Directory rename**: `agents/templates/langgraph_thinking/` → `agents/templates/_game_utils/` (underscore prefix signals internal/private utilities). Move `prompts.py`, `schema.py`, and the now-merged `vision.py` into the new directory.
-3. **Pre-existing `agents.structs` issue**: leave alone in `test_core.py`. Only remove the dead LangGraphRandom import and test class.
+#### Appended functions (in order)
 
----
+**From `multimodal.py` (6 items):**
 
-## Open Design Decisions
+1. `_RGBA_PALETTE` — 16 RGBA color tuples (0–15), same mapping as `COLOR_PALETTE` but RGBA format. Renamed from `_PALETTE` to avoid clash with `COLOR_PALETTE`.
 
-### Decision 1: Where to place preserved `format_frame()` and `g2im()` functions
-After stripping `langgraph_functional_agent.py`, `format_frame()` and `g2im()` are game-frame-to-image utilities. `vision.py` already has similar utilities (`render_frame()`).
+2. `_validate_grid_64(grid: list[list[int]]) -> None` — validates a grid is 64×64 with values 0–15. Renamed from `_validate_grid` to be more specific.
 
-**Options:**
-- **A**: Append `g2im()` and `format_frame()` to `vision.py` — consolidates all frame-rendering utilities in one place.
-- **B**: Keep them in a renamed file (e.g., `agents/templates/_frame_utils.py`) — keeps concerns separate.
-- **C**: Leave them in `langgraph_functional_agent.py` stripped of dead code — name becomes misleading.
+3. `grid_2d_to_pil(grid: list[list[int]]) -> Image.Image` — converts a 2D 64×64 grid to a 256×256 RGBA PIL Image using `_RGBA_PALETTE`. Renamed from `grid_to_image` to avoid naming collision.
 
-**Recommendation**: **Option A** — `vision.py` is the natural home for frame-rendering utilities. Both functions are general-purpose grid-to-image converters.
+4. `pil_to_base64(img: Image.Image) -> str` — PIL Image → base64 PNG. Renamed from `image_to_base64` for clarity.
 
-### Decision 2: What to do with `langgraph_thinking/` directory after removing 5 of 7 files
-After removals, the directory contains `prompts.py`, `vision.py`, and `schema.py`. No `__init__.py` (removed). The name "langgraph_thinking" is now misleading.
+5. `image_diff(img_a: Image.Image, img_b: Image.Image, highlight_rgb: tuple[int, int, int] = (255, 0, 0)) -> Image.Image` — visual diff of two PIL Images, changed pixels tinted `highlight_rgb` on black background. Returns pure black Image if identical. Uses numpy. Unchanged.
 
-**Options:**
-- **A**: Keep directory as implicit namespace package (no `__init__.py`), rename to something like `_game_utils/`.
-- **B**: Keep directory as-is without `__init__.py` — Python 3.3+ implicit namespace packages allow `from agents.templates.langgraph_thinking.prompts import ...` to still work.
-- **C**: Keep directory, add a minimal `__init__.py` that exports preserved public API.
+6. `human_actions: dict[GameAction, str]` — maps `GameAction` enum values to human-readable descriptions. Original name preserved.
 
-**Recommendation**: **Option B** — simplest. No `__init__.py` needed; implicit namespace packages work. The name is cosmetic; the user can rename later. If they prefer, **Option A** (rename to `_game_utils/`) is also clean.
+7. `get_human_inputs_from(available_actions: list[GameAction]) -> str` — formats available actions into a human-readable string using `human_actions` map. Original name preserved.
 
-### Decision 3: Pre-existing `agents.structs` test breakage
-Both `tests/unit/test_core.py` (L3-10) and `tests/unit/test_swarm.py` (L6) import from the non-existent `agents.structs` module. This is a pre-existing issue unrelated to the langchain/langgraph removal. The `structs.py` file was removed when the codebase migrated to `arcengine` (see git history: commit `b06c432`). The tests were not updated.
+**NOT preserved from multimodal.py:**
+- `make_image_block` — OpenAI-specific image_url dict format, no remaining consumers
+- `extract_json` — signature tied to `ChatCompletion` (openai type), no remaining consumers
 
-**Options:**
-- **In scope**: Fix the structs imports in the test files being modified (test_core.py) — update to import from `arcengine`/`arc_agi`.
-- **Out of scope**: Leave test_swarm.py structs issue for another pass.
+**From `smolagents.py` (1 item, converted):**
 
-**Recommendation**: Since we're already editing `tests/unit/test_core.py` for the LangGraphRandom removal, fix the structs imports there too. The imports should come from `arcengine` (for `FrameData`, `GameAction`, `GameState`) and `arc_agi.scorecard` (for `Scorecard`/`EnvironmentScorecard`). Leave `test_swarm.py` as-is (separate concern).
+8. `def grids_to_pil(grid: list[list[list[int]]]) -> Image.Image` — converts a 3D grid to a PIL Image, stacking layers horizontally with 5-pixel separators. Extracted from `SmolVisionAgent.grid_to_image()` — the method didn't use `self` so conversion is trivial (drop `self`, rename). Uses PIL only.
 
-However — check whether `ActionInput`, `Card`, `Scorecard` are defined in `arcengine` or `arc_agi`. If they exist there, the fix is straightforward. If not (which seems likely given the `EnvironmentScorecard` usage in `agent.py`), then the test file has a deeper pre-existing problem that's beyond the scope of this task.
+**From `reasoning_agent.py` (1 item, converted):**
 
-**Confirmed**: `agents.agent.py` line 10 imports `FrameData, FrameDataRaw, GameAction, GameState` from `arcengine`. Line 9 imports `EnvironmentWrapper` from `arc_agi`. Line `from arc_agi.scorecard import EnvironmentScorecard`. So the structs types are now in `arcengine` and `arc_agi`. The specific types `ActionInput`, `Card`, `Scorecard` — check if they exist in `arcengine`.
+9. `def render_grid_with_zones(grid: list[list[int]], cell_size: int = 40, zone_size: int = 16) -> bytes` — renders a 2D grid with colored cells, zone coordinate labels, gold zone borders. Extracted from `ReasoningAgent.generate_grid_image_with_zone()` — the instance method used `self.ZONE_SIZE`; converted to standalone function by adding `zone_size: int = 16` parameter. Uses `ImageDraw`, `ImageFont`. Returns PNG bytes.
+
+**NOT preserved from reasoning_agent.py:**
+- `ReasoningActionResponse(BaseModel)` — Pydantic schema specific to the agent's structured output
 
 ---
 
-## Summary of Changes Required
+## Dead Import — Categorization
 
-### Files to Remove Entirely (7 files)
-1. `agents/templates/langgraph_thinking/__init__.py`
-2. `agents/templates/langgraph_thinking/llm.py`
-3. `agents/templates/langgraph_thinking/tools.py`
-4. `agents/templates/langgraph_thinking/agent.py`
-5. `agents/templates/langgraph_thinking/nodes.py`
-6. `agents/templates/langgraph_random_agent.py`
-7. `agents/templates/langgraph_functional_agent.py` — After extracting `format_frame()` and `g2im()` into vision.py, this file has no remaining content.
+### A. Fully Dependent — Mark for Removal (8 items)
+| File | Dead imports |
+|------|-------------|
+| `smolagents.py` | `from smolagents import ...` (L8–15), `from .llm_agents import LLM` (L17) |
+| `llm_agents.py` | `import openai` (L7), `from openai import OpenAI` (L9) |
+| `multimodal.py` | `import openai` (L14), `from openai import OpenAI` (L16), `from openai.types.chat import ChatCompletion` (L17) |
+| `reasoning_agent.py` | `from openai import OpenAI` (L9), `from .llm_agents import ReasoningLLM` (L13) |
+| `openclaw_agent/openclaw_agent.py` | `import openai` (L18), `from openai import OpenAI` (L20) |
+| `openclaw_agent/__init__.py` | `from .openclaw_agent import OpenClaw` (L1) |
+| `test_openclaw_parser.py` | `from ...openclaw_agent import OpenClaw` (L12) |
+| `test_openclaw_model_override.py` | `from ...openclaw_agent import OpenClaw` (L16) |
 
-### Files to Create (1 file — new renamed directory)
-8. `agents/templates/_game_utils/` — rename from `langgraph_thinking/`. Contains `prompts.py`, `schema.py` (modified), `vision.py` (with format_frame/g2im appended).
+### B. Fully Independent — Preserved (9 items → `vision.py`)
+| Source | Preserved as | In destination |
+|--------|-------------|---------------|
+| `multimodal.py:_PALETTE` | `_RGBA_PALETTE` | `_game_utils/vision.py` |
+| `multimodal.py:_validate_grid` | `_validate_grid_64` | `_game_utils/vision.py` |
+| `multimodal.py:grid_to_image` | `grid_2d_to_pil` | `_game_utils/vision.py` |
+| `multimodal.py:image_to_base64` | `pil_to_base64` | `_game_utils/vision.py` |
+| `multimodal.py:image_diff` | `image_diff` (unchanged) | `_game_utils/vision.py` |
+| `multimodal.py:human_actions` | `human_actions` (unchanged) | `_game_utils/vision.py` |
+| `multimodal.py:get_human_inputs_from` | `get_human_inputs_from` (unchanged) | `_game_utils/vision.py` |
+| `smolagents.py:SmolVisionAgent.grid_to_image` | `grids_to_pil` (standalone) | `_game_utils/vision.py` |
+| `reasoning_agent.py:ReasoningAgent.generate_grid_image_with_zone` | `render_grid_with_zones` (standalone) | `_game_utils/vision.py` |
 
-### Files to Remove Content From (2 files)
-9. `agents/__init__.py` — Remove L8-10 (3 import lines), remove L36-39 (4 `__all__` strings)
-10. `tests/unit/test_core.py` — Remove L11 (import), remove `TestLangGraphRandomAgent` class (L229-281)
-
-### Files to Edit/Strip Dead References (1 file)
-11. `agents/templates/_game_utils/schema.py` (moved from `agents/templates/langgraph_thinking/schema.py`) — Remove `BaseMessage` import (L5), change `context: list[BaseMessage]` to `context: list[Any]` (add `Any` to typing imports)
-
-### Files to Preserve Unchanged (3 files, moved to new directory)
-12. `agents/templates/_game_utils/prompts.py` (moved from `agents/templates/langgraph_thinking/prompts.py`)
-13. `agents/templates/_game_utils/vision.py` (moved from `agents/templates/langgraph_thinking/vision.py` — `format_frame()` and `g2im()` appended at end)
-14. `agents/templates/_game_utils/schema.py` (moved from `agents/templates/langgraph_thinking/schema.py`, with edit applied)
-
----
-
-## Dead Import Inventory (by package)
-
-### `langchain_core` (3 files, 4 import lines — after removing tools.py and nodes.py as entire files)
-| File | Import |
+### C. Partially Dependent — Edit/Strip
+| File | Action |
 |------|--------|
-| `langgraph_thinking/llm.py:1` | `from langchain_core.language_models import BaseChatModel` |
-| `langgraph_thinking/schema.py:5` | `from langchain_core.messages import BaseMessage` |
-| `langgraph_thinking/nodes.py:8` | `from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage` |
-| `langgraph_thinking/tools.py:6` | `from langchain_core.tools import tool` |
-
-### `langchain_openai` (1 file, 1 import line)
-| File | Import |
-|------|--------|
-| `langgraph_thinking/llm.py:2` | `from langchain_openai import ChatOpenAI` |
-
-### `langgraph` (4 files, 10 import lines)
-| File | Import |
-|------|--------|
-| `langgraph_thinking/agent.py:5` | `from langgraph.graph import END, START, StateGraph` |
-| `langgraph_thinking/agent.py:6` | `from langgraph.pregel import Pregel` |
-| `langgraph_thinking/agent.py:7` | `from langgraph.store.sqlite import SqliteStore` |
-| `langgraph_thinking/nodes.py:9` | `from langgraph.config import get_store` |
-| `langgraph_thinking/tools.py:7` | `from langgraph.config import get_store` |
-| `langgraph_random_agent.py:6` | `from langgraph.graph import END, START, StateGraph` |
-| `langgraph_random_agent.py:7` | `from langgraph.pregel import Pregel` |
-| `langgraph_functional_agent.py:13` | `from langgraph.checkpoint.memory import InMemorySaver` |
-| `langgraph_functional_agent.py:14` | `from langgraph.func import entrypoint` |
-| `langgraph_functional_agent.py:15` | `from langgraph.pregel import Pregel` |
-
-### `langsmith` (1 file, 2 import lines)
-| File | Import |
-|------|--------|
-| `langgraph_functional_agent.py:10` | `import langsmith as ls` |
-| `langgraph_functional_agent.py:16` | `from langsmith.schemas import Attachment` |
+| `agents/__init__.py` | Strip dead imports and `__all__` entries. Remove `reasoningagent` manual override. |
+| `pyproject.toml` | Remove `openai`, `smolagents`, `agentops` lines. |
 
 ---
 
-## Pre-existing Issues Discovered (out of scope but noted)
+## Depth 2 — Knock-on Effects
+Same as before — all cascading dead imports are contained in `agents/__init__.py` and handled by its edit.
 
-1. **`tests/unit/test_core.py`** imports from `agents.structs` (L3-10) which does not exist. Same issue in `tests/unit/test_swarm.py` (L6). This predates the langchain removal.
-2. **`tests/unit/test_openclaw_parser.py`** and **`tests/unit/test_openclaw_model_override.py`** exist — not checked for import issues, but unlikely to be affected.
+**Depth 3**: No further effects. Remaining files (`main.py`, `swarm.py`, `agent.py`, `recorder.py`, `tracing.py`, `_game_utils/*`, `random_agent.py`, `conftest.py`, remaining test files) have zero imports from removed packages or agent classes.
+
+---
+
+## Pre-Existing Test Breakage (unchanged)
+- `tests/unit/test_core.py` and `tests/unit/test_swarm.py` import from non-existent `agents.structs`. Not in scope.
 
 ---
 
 ## Execution Order
 
-1. **Edit `schema.py`** — change `BaseMessage` to `Any` first (no dependency on other steps)
-2. **Append `format_frame()` and `g2im()` to `vision.py`** — take cleaned versions from `langgraph_functional_agent.py` (strip langsmith refs from `format_frame()` L190-195 first)
-3. **Create `agents/templates/_game_utils/` directory** and move `prompts.py`, `schema.py`, `vision.py` into it
-4. **Remove the 7 fully-dependent files** — the 6 original files plus `langgraph_functional_agent.py`
-5. **Edit `agents/__init__.py`** — strip dead imports (L8-10) and `__all__` entries (L36-39 relevant strings)
-6. **Edit `tests/unit/test_core.py`** — strip dead import (L11) and `TestLangGraphRandomAgent` class (L229-281)
-7. Verify no dangling references remain (`git grep` for `langchain`, `langgraph`, `langsmith`, `langchain_core`, `langchain_openai`)
-8. Run `pytest` to confirm tests pass (expect `test_swarm.py` structs failures — pre-existing)
-9. Run `ruff check` and `mypy` to confirm no new issues
+1. **Edit `_game_utils/vision.py`** — add `GameAction` to arcengine import, append the 9 preserved functions
+2. **Remove 5 template files + 1 directory** — `llm_agents.py`, `multimodal.py`, `reasoning_agent.py`, `smolagents.py`, `openclaw_agent/`
+3. **Remove 2 test files** — `test_openclaw_parser.py`, `test_openclaw_model_override.py`
+4. **Edit `agents/__init__.py`** — strip dead imports, rebuild `__all__`, remove `reasoningagent` override
+5. **Edit `pyproject.toml`** — remove `openai`, `smolagents`, `agentops` lines
+6. `pip install -e .` (update installed packages after pyproject.toml changes)
+7. Run validation: `git grep` for all removed agent/package names → zero matches
+8. Run validation: `python -c "from agents import AVAILABLE_AGENTS; print(AVAILABLE_AGENTS.keys())"` → only `random` and playback recordings
+9. `ruff check && mypy`
+10. Commit
+
+## Validation Commands
+```bash
+# No dead imports remain
+git grep -c "openai\|smolagents\|agentops\|llm_agents\|ReasoningAgent\|MultiModalLLM\|OpenClaw\|SmolCodingAgent\|SmolVisionAgent" -- "*.py" "*.toml"
+
+# Only Random + playback recorders available
+python -c "from agents import AVAILABLE_AGENTS; print( sorted(k for k in AVAILABLE_AGENTS if not k.endswith('.recording.jsonl')))"
+# Expected: ['random']
+
+# Lint passes
+ruff check agents/ tests/ main.py
+mypy agents/ main.py
+```

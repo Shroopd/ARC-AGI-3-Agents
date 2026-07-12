@@ -8,7 +8,7 @@ from io import BytesIO
 from typing import Any
 
 import numpy as np
-from arcengine import FrameData
+from arcengine import FrameData, GameAction
 from PIL import Image, ImageDraw, ImageFont
 
 COLOR_PALETTE = {
@@ -333,3 +333,197 @@ def format_frame(latest_frame: FrameData, as_image: bool) -> list[dict[str, Any]
 Reply with a few sentences of plain-text strategy observation about the frame to inform your next action.""",
         },
     ]
+
+
+# ---------------------------------------------------------------------------
+# Preserved independent utilities from the removed LLM-agent files
+# ---------------------------------------------------------------------------
+
+_RGBA_PALETTE: list[tuple[int, int, int, int]] = [
+    (0xFF, 0xFF, 0xFF, 0xFF),  # 0 White
+    (0xCC, 0xCC, 0xCC, 0xFF),  # 1 Off-white
+    (0x99, 0x99, 0x99, 0xFF),  # 2 Neutral light
+    (0x66, 0x66, 0x66, 0xFF),  # 3 Neutral
+    (0x33, 0x33, 0x33, 0xFF),  # 4 Off-black
+    (0x00, 0x00, 0x00, 0xFF),  # 5 Black
+    (0xE5, 0x3A, 0xA3, 0xFF),  # 6 Magenta
+    (0xFF, 0x7B, 0xCC, 0xFF),  # 7 Magenta light
+    (0xF9, 0x3C, 0x31, 0xFF),  # 8 Red
+    (0x1E, 0x93, 0xFF, 0xFF),  # 9 Blue
+    (0x88, 0xD8, 0xF1, 0xFF),  # 10 Blue light
+    (0xFF, 0xDC, 0x00, 0xFF),  # 11 Yellow
+    (0xFF, 0x85, 0x1B, 0xFF),  # 12 Orange
+    (0x92, 0x12, 0x31, 0xFF),  # 13 Maroon
+    (0x4F, 0xCC, 0x30, 0xFF),  # 14 Green
+    (0xA3, 0x56, 0xD6, 0xFF),  # 15 Purple
+]
+
+
+def _validate_grid_64(grid: list[list[int]]) -> None:
+    if len(grid) != 64 or any(len(row) != 64 for row in grid):
+        raise ValueError("Grid must be 64×64.")
+    if any(cell not in range(16) for row in grid for cell in row):
+        raise ValueError("Grid values must be integers 0–15.")
+
+
+def grid_2d_to_pil(grid: list[list[int]]) -> Image.Image:
+    _validate_grid_64(grid)
+    raw = bytearray()
+    for row in grid:
+        for idx in row:
+            raw.extend(_RGBA_PALETTE[idx])
+    img = Image.frombytes("RGBA", (64, 64), bytes(raw))
+    img = img.resize((128, 128), Image.NEAREST)
+    return img
+
+
+def pil_to_base64(img: Image.Image) -> str:
+    buffer = BytesIO()
+    img.save(buffer, format="PNG", optimize=True)
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def image_diff(
+    img_a: Image.Image,
+    img_b: Image.Image,
+    highlight_rgb: tuple[int, int, int] = (255, 0, 0),
+) -> Image.Image:
+    a = np.asarray(img_a.convert("RGB"))
+    b = np.asarray(img_b.convert("RGB"))
+    if a.shape != b.shape:
+        raise ValueError(
+            f"Images must have the same dimensions; got {a.shape} vs {b.shape}"
+        )
+    diff_mask = np.any(a != b, axis=-1)
+    if not diff_mask.any():
+        return Image.new("RGB", (a.shape[1], a.shape[0]), (0, 0, 0))
+    diff_img = np.zeros_like(a)
+    diff_img[diff_mask] = highlight_rgb
+    return Image.fromarray(diff_img)
+
+
+human_actions: dict[GameAction, str] = {
+    GameAction.ACTION1: "Move Up",
+    GameAction.ACTION2: "Move Down",
+    GameAction.ACTION3: "Move Left",
+    GameAction.ACTION4: "Move Right",
+    GameAction.ACTION5: "Perform Action",
+    GameAction.ACTION6: "Click object on screen, make sure to describe object and its relative, not absolute, position",
+    GameAction.ACTION7: "Undo",
+}
+
+
+def get_human_inputs_from(available_actions: list[GameAction]) -> str:
+    s = ""
+    for action in available_actions:
+        if action in human_actions:
+            s += "\n" + human_actions[action]
+    return s
+
+
+def grids_to_pil(grid: list[list[list[int]]]) -> Image.Image:
+    color_map = [
+        (0, 0, 0),
+        (0, 0, 170),
+        (0, 170, 0),
+        (0, 170, 170),
+        (170, 0, 0),
+        (170, 0, 170),
+        (170, 85, 0),
+        (170, 170, 170),
+        (85, 85, 85),
+        (85, 85, 255),
+        (85, 255, 85),
+        (85, 255, 255),
+        (255, 85, 85),
+        (255, 85, 255),
+        (255, 255, 85),
+        (255, 255, 255),
+    ]
+    height = len(grid[0])
+    width = len(grid[0][0])
+    num_layers = len(grid)
+    separator_width = 5 if num_layers > 1 else 0
+    total_width = (width * num_layers) + (separator_width * (num_layers - 1))
+    image = Image.new("RGB", (total_width, height), "white")
+    pixels = image.load()
+    for i, grid_layer in enumerate(grid):
+        if len(grid_layer) != height or len(grid_layer[0]) != width:
+            continue
+        offset_x = i * (width + separator_width)
+        for y in range(height):
+            for x in range(width):
+                color_index = grid_layer[y][x] % 16
+                pixels[x + offset_x, y] = color_map[color_index]
+    return image
+
+
+def render_grid_with_zones(
+    grid: list[list[int]], cell_size: int = 40, zone_size: int = 16
+) -> bytes:
+    if not grid or not grid[0]:
+        img = Image.new("RGB", (200, 200), color="black")
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        return buffer.getvalue()
+    height = len(grid)
+    width = len(grid[0])
+    img = Image.new("RGB", (width * cell_size, height * cell_size), color="white")
+    draw = ImageDraw.Draw(img)
+    key_colors = {
+        0: "#FFFFFF",
+        1: "#CCCCCC",
+        2: "#999999",
+        3: "#666666",
+        4: "#333333",
+        5: "#000000",
+        6: "#E53AA3",
+        7: "#FF7BCC",
+        8: "#F93C31",
+        9: "#1E93FF",
+        10: "#88D8F1",
+        11: "#FFDC00",
+        12: "#FF851B",
+        13: "#921231",
+        14: "#4FCC30",
+        15: "#A356D6",
+    }
+    for y in range(height):
+        for x in range(width):
+            color = key_colors.get(grid[y][x], "#888888")
+            draw.rectangle(
+                [
+                    x * cell_size,
+                    y * cell_size,
+                    (x + 1) * cell_size,
+                    (y + 1) * cell_size,
+                ],
+                fill=color,
+                outline="#000000",
+                width=1,
+            )
+    for y in range(0, height, zone_size):
+        for x in range(0, width, zone_size):
+            font = ImageFont.load_default()
+            draw.text(
+                (x * cell_size + 2, y * cell_size + 2),
+                f"({x},{y})",
+                fill="#FFFFFF",
+                font=font,
+            )
+            zone_w = min(zone_size, width - x) * cell_size
+            zone_h = min(zone_size, height - y) * cell_size
+            draw.rectangle(
+                [
+                    x * cell_size,
+                    y * cell_size,
+                    x * cell_size + zone_w,
+                    y * cell_size + zone_h,
+                ],
+                fill=None,
+                outline="#FFD700",
+                width=2,
+            )
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    return buffer.getvalue()
