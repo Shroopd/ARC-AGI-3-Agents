@@ -1,8 +1,7 @@
 from enum import Enum
-from typing import Annotated, Optional, TypedDict
+from typing import Annotated, Any, Optional, TypedDict
 
 from arcengine import FrameData, GameAction
-from langchain_core.messages import BaseMessage
 
 
 class LLM(Enum):
@@ -14,7 +13,7 @@ class AgentState(TypedDict):
 
     action: Optional[GameAction]
 
-    context: list[BaseMessage]
+    context: list[Any]
     """Additional context build up by the agent. Passed to the thinking node."""
 
     key_matches_door: bool

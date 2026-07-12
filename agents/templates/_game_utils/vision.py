@@ -5,8 +5,10 @@ Helpers for working with game frames.
 import base64
 import json
 from io import BytesIO
+from typing import Any
 
 import numpy as np
+from arcengine import FrameData
 from PIL import Image, ImageDraw, ImageFont
 
 COLOR_PALETTE = {
@@ -253,3 +255,81 @@ def add_highlight(
         fill=(255, 255, 255),
         anchor="mm",
     )
+
+
+def g2im(g: list[list[list[int]]]) -> bytes:
+    C = [
+        (0, 0, 0),
+        (0, 0, 170),
+        (0, 170, 0),
+        (0, 170, 170),
+        (170, 0, 0),
+        (170, 0, 170),
+        (170, 85, 0),
+        (170, 170, 170),
+        (85, 85, 85),
+        (85, 85, 255),
+        (85, 255, 85),
+        (85, 255, 255),
+        (255, 85, 85),
+        (255, 85, 255),
+        (255, 255, 85),
+        (255, 255, 255),
+    ]
+
+    h, w = len(g[0]), len(g[0][0])
+    good = [block for block in g if len(block) == h and len(block[0]) == w]
+    n = len(good)
+    s = 5 * (n > 1)
+    W = w * n + s * (n - 1)
+
+    im = Image.new("RGB", (W, h), "white")
+    px = im.load()
+    for i, block in enumerate(good):
+        ox = i * (w + s)
+        for y, row in enumerate(block):
+            for x, val in enumerate(row):
+                px[ox + x, y] = C[val & 15]
+
+    buf = BytesIO()
+    im.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def format_frame(latest_frame: FrameData, as_image: bool) -> list[dict[str, Any]]:
+    img = g2im(latest_frame.frame) if latest_frame.frame else None
+    if as_image and img:
+        frame_block = {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/png;base64,{base64.b64encode(img).decode('ascii')}",
+            },
+        }
+    else:
+        lines = []
+        for i, block in enumerate(latest_frame.frame):
+            lines.append(f"Grid {i}:")
+            for row in block:
+                lines.append(f"  {row}")
+            lines.append("")
+        frame_block = {"type": "text", "text": "\n".join(lines)}
+    return [
+        {
+            "type": "text",
+            "text": f"""# State:
+{latest_frame.state.name}
+
+# Score:
+{latest_frame.score}
+
+# Frame:
+""",
+        },
+        frame_block,
+        {
+            "type": "text",
+            "text": """
+# TURN:
+Reply with a few sentences of plain-text strategy observation about the frame to inform your next action.""",
+        },
+    ]
