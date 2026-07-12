@@ -256,7 +256,7 @@ class Playback(Agent):
         data["game_id"] = self.game_id
         action.set_data(data)
         if "reasoning" in action_input and action_input["reasoning"] is not None:
-            action.reasoning = action_input["reasoning"]
+            action.reasoning = action_input["reasoning"]  # type: ignore[attr-defined,unused-ignore]
 
         logger.debug(
             f"Playback action {self.action_counter}: {action.name} with data {data}"

@@ -44,7 +44,7 @@ class Random(Agent):
             action = random.choice([a for a in GameAction if a is not GameAction.RESET])
 
         if action.is_simple():
-            action.reasoning = f"RNG told me to pick {action.value}"
+            action.reasoning = f"RNG told me to pick {action.value}"  # type: ignore[attr-defined,unused-ignore]
         elif action.is_complex():
             action.set_data(
                 {
@@ -52,7 +52,7 @@ class Random(Agent):
                     "y": random.randint(0, 63),
                 }
             )
-            action.reasoning = {
+            action.reasoning = {  # type: ignore[attr-defined,unused-ignore]
                 "desired_action": f"{action.value}",
                 "my_reason": "RNG said so!",
             }
