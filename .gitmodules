@@ -1,0 +1,3 @@
+[submodule "AI_experiments"]
+	path = AI_experiments
+	url = https://github.com/Shroopd/AI_experiments.git
