@@ -33,28 +33,6 @@ For more details see the full docs at <https://three.arcprize.org/docs>.
 
 ---
 
-## Observability (Optional)
-
-[AgentOps](https://agentops.ai/) provides real-time monitoring and debugging.
-
-```bash
-# Install the optional extra
-uv sync --extra agentops
-
-# Or with pip
-pip install -U agentops
-```
-
-Add your key to `.env`:
-
-```bash
-AGENTOPS_API_KEY=aos_your_api_key_here
-```
-
-Run an agent and you’ll get a session replay link in the console.
-
----
-
 ## Contest Submission
 
 Submit your agent via this form: <https://forms.gle/wMLZrEFGDh33DhzV9>
@@ -96,20 +74,18 @@ The core agent framework lives in [`agents/`](https://github.com/arcprize/ARC-AG
 - `agent.py` – the base `Agent` class and utilities.
 - `swarm.py` – orchestration for running many agents in parallel.
 - `recorder.py` – JSONL gameplay recording utilities.
-- `structs.py` – typed data structures (`FrameData`, `GameAction`, etc.).
+- `templates/random_agent.py` – a starter non-LLM random agent.
+
+Types (`FrameData`, `GameAction`, `GameState`, etc.) come from the `arcengine`/`arc_agi` packages; scorecard structs (`Card`, `Scorecard`) from `arc_agi.scorecard`. `templates/_game_utils/vision.py` provides frame/vision helpers for non-LLM agents.
 
 See the concise README in that folder or jump straight to the online docs → [Agent Quick-Start](https://three.arcprize.org/docs#agent-quickstart).
 
 ## Agent Templates
 
-Ready-made templates live in [`agents/templates/`](https://github.com/arcprize/ARC-AGI-3-Agents/tree/main/agents/templates):
+Ready-made templates live in [`agents/templates/`](https://github.com/arcprize/ARC-AGI-3-Agents/tree/main/agents/templates). This repo focuses on **non-LLM** agents; the starter `random_agent.py` is included as a reference.
 
-• **Starter templates** – random agents, basic LLM agents, guided & reasoning agents.
-• **Third-party integrations** – HuggingFace *smolagents*, AgentOps tracing & reasoning agent, LangChain/LangGraph agents.
-
-Browse them on GitHub or read the docs:
+See the docs:
 - Standard templates: <https://three.arcprize.org/docs#building-agents>
-- Third-party templates: <https://three.arcprize.org/docs#third-party-templates>
 
 ---
 

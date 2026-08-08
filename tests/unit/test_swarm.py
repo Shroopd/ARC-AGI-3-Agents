@@ -3,7 +3,9 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from agents.structs import Card, GameState, Scorecard
+from arc_agi.scorecard import Card, Scorecard
+from arcengine import GameState
+
 from agents.swarm import Swarm
 from agents.templates.random_agent import Random
 
@@ -66,7 +68,7 @@ class TestSwarmScorecard:
         card = Card(
             game_id="test-game",
             total_plays=2,
-            scores=[10, 20],
+            levels_completed=[10, 20],
             states=[GameState.GAME_OVER, GameState.WIN],
             actions=[50, 60],
         )

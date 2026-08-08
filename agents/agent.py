@@ -11,7 +11,6 @@ from arcengine import FrameData, FrameDataRaw, GameAction, GameState
 from pydantic import ValidationError
 
 from .recorder import Recorder
-from .tracing import trace_agent_session
 
 logger = logging.getLogger()
 
@@ -35,8 +34,6 @@ class Agent(ABC):
     headers: dict[str, str]
     arc_env: EnvironmentWrapper
 
-    # AgentOps tracing attributes
-    trace: Any = None
     tags: list[str]
 
     def __init__(
@@ -65,7 +62,6 @@ class Agent(ABC):
         }
         self.arc_env = arc_env
 
-    @trace_agent_session
     def main(self) -> None:
         """The main agent loop. Play the game_id until finished, then exits."""
         self.timer = time.time()

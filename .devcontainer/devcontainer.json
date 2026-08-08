@@ -3,8 +3,15 @@
         "dockerfile": "Dockerfile",
         "context": "."
     },
+    "features": {
+        "ghcr.io/devcontainers/features/nvidia-cuda:1": {
+            "version": "13.1.1"
+        }
+    },
     "runArgs": [
-        // Household LLM server cluster host
+        "--gpus",
+        "all",
+        // Household LLM server cluster host (for the development-agent loop)
         "--add-host",
         "spark1:10.13.54.178",
         "--cap-add=SYS_PTRACE",
@@ -25,15 +32,16 @@
             },
             "extensions": [
                 "ms-python.python",
-                "ms-python.pylint",
                 "ms-python.vscode-pylance",
                 "charliermarsh.ruff",
+                "ms-pyright.pyright",
                 "kilocode.kilo-code"
             ]
         }
     },
     "mounts": [
-        "source=${env:HOME}${env:USERPROFILE}/.config,target=/home/vscode/.config,type=bind,consistency=cached"
+        "source=${env:USERPROFILE}/.config,target=/home/vscode/.config,type=bind,consistency=cached",
+        "source=devcontainer-uv-cache,target=/uv-cache,type=volume"
     ],
-    "postCreateCommand": "cd /workspaces/ARC-AGI-3-Agents && uv sync --python 3.13 --dev && uv run pre-commit install"
+    "postCreateCommand": "cd /workspaces/ARC-AGI-3-Agents && uv sync --python 3.13 && uv run pre-commit install"
 }

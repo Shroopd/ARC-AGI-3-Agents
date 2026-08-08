@@ -54,7 +54,7 @@ class Swarm:
         self.tags = tags.copy() if tags is not None else []
         self._arc = Arcade()
 
-        # Set up base tags for tracing
+        # Set up base tags for the scorecard
         if self.agent_name.endswith(".recording.jsonl"):
             # Extract GUID from playback filename
             # Format: game.agent.count.guid.recording.jsonl

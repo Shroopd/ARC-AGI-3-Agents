@@ -1,31 +1,15 @@
-FROM rockylinux:9
+FROM python:3.13-slim
 
 ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
-RUN dnf -y update && dnf install -y \
-    dnf-plugins-core \
-    epel-release \
-    && dnf config-manager --set-enabled crb \
-    && dnf -y update
-
-RUN dnf -y install --allowerasing \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
-    which \
-    procps-ng \
     sudo \
-    python3.13 \
-    findutils \
-    unzip \
-    wget \
-    bash-completion \
-    && dnf clean all
-
-# Python venv support
-RUN python3.13 -m ensurepip --upgrade && \
-    python3.13 -m pip install --upgrade pip setuptools wheel
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install uv (Rust-based Python package manager)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
@@ -41,6 +25,7 @@ RUN groupadd --gid $USER_GID $USERNAME \
 
 ENV SHELL=/bin/bash
 ENV UV_LINK_MODE=copy
+ENV UV_CACHE_DIR=/uv-cache
 
 # Verify installations
 RUN uv --version && \

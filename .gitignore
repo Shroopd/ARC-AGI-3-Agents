@@ -6,8 +6,10 @@
 
 # Cache
 .ruff_cache/
-.mypy_cache/
+.pyright/
 **/__pycache__/
+.pytest_cache/
+.venv/
 
 # IDE settings
 .vscode/

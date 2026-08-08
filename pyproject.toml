@@ -6,6 +6,7 @@ readme = "readme.md"
 requires-python = ">=3.12"
 dependencies = [
     "arc-agi>=0.9.1",
+    "arcengine>=0.9.3",
     "dotenv>=0.9.9",
     "numpy>=2.3.2",
     "pillow>=11.2.1",
@@ -17,21 +18,17 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "mypy>=1.15.0",
     "pre-commit>=4.2.0",
+    "pyright>=1.1.0",
     "pytest>=8.4.1",
-    "pytest-asyncio>=1.0.0",
-    "requests-mock>=1.12.1",
     "ruff>=0.11.4",
 ]
 
-[tool.mypy]
-strict = true
-disallow_untyped_defs = true
-exclude = [
-    "tests",
-]
-plugins = []
+[tool.pyright]
+pythonVersion = "3.13"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "standard"
 
 [tool.ruff.lint]
 extend-select = ["I"]
